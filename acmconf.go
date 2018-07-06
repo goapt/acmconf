@@ -1,13 +1,14 @@
 package acmconf
 
 import (
-	"github.com/verystar/goacm"
 	"reflect"
 	"errors"
-	"github.com/ilibs/json5"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ilibs/json5"
+	"github.com/verystar/goacm"
 )
 
 type acmItem struct {

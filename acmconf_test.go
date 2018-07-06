@@ -2,10 +2,11 @@ package acmconf
 
 import (
 	"log"
-	"github.com/verystar/goacm"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/verystar/goacm"
 )
 
 func getConfig() *Config {
