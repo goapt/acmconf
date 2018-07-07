@@ -5,16 +5,17 @@ import (
 	"errors"
 	"strings"
 	"sync"
-	"time"
-
 	"github.com/ilibs/json5"
 	"github.com/verystar/goacm"
+	"time"
+	"fmt"
 )
 
 type acmItem struct {
-	dataId string
-	group  string
-	v      interface{}
+	key      string
+	dataId   string
+	group    string
+	multiple bool
 }
 
 type Config struct {
@@ -37,45 +38,56 @@ func NewConfig(option func(c *goacm.Client)) (*Config, error) {
 	}, nil
 }
 
-func (c *Config) Get(dataId, group string) (string, error) {
-	return c.Client.GetConfig(dataId, group)
-}
+func (c *Config) unmarshal(result string, v interface{}, item *acmItem) error {
 
-//Unmarshal is json5 unmarshal to struct and support xpath
-func (c *Config) Unmarshal(dataId, group string, v interface{}) error {
-	result, err := c.Get(dataId, group)
-
-	if err != nil {
-		return err
+	if item.multiple {
+		result = fmt.Sprintf(`{"%s":%s}`, item.key, result)
 	}
-
 	buf := []byte(result)
-	err = json5.Unmarshal(buf, v)
-	if err == nil {
-		c.cache.Store(c.getCacheKey(dataId, group), &acmItem{
-			dataId: dataId,
-			group:  group,
-			v:      v,
-		})
-	}
-	return err
+	return json5.Unmarshal(buf, v)
 }
 
-func (c *Config) Listen(dataId, group string, v interface{}, fn func()) {
-	go func(dataId, grpup string, v interface{}) {
-		for {
-			_, err := c.Client.Subscribe(dataId, group, "")
-			if err == nil {
-				c.Unmarshal(dataId, group, v)
-				fn()
+func (c *Config) Listen(fn func(key string, v interface{})) {
+
+	c.cache.Range(func(key, value interface{}) bool {
+		item := key.(*acmItem)
+		go func(item *acmItem, v interface{}) {
+			for {
+				ret, err := c.Client.Subscribe(item.dataId, item.group, "")
+				if err == nil {
+					c.unmarshal(ret, v, item)
+					fn(item.key, v)
+				}
+				time.Sleep(1 * time.Second)
 			}
-			time.Sleep(1 * time.Second)
-		}
-	}(dataId, group, v)
+		}(item, value)
+
+		return true
+	})
 }
 
-func (c *Config) getCacheKey(dataId, group string) string {
+func (c *Config) getCacheKey(group, dataId string) string {
 	return strings.Join([]string{c.Client.NameSpace, dataId, group}, "-")
+}
+
+func (c *Config) getTags(str string) map[string]*acmItem {
+	m := make(map[string]*acmItem, 0)
+	tags := strings.Split(str, ",")
+	multiple := len(tags) > 1
+
+	for _, v := range tags {
+		tmp := strings.Split(v, ":")
+		if len(tmp) != 2 {
+			continue
+		}
+		m[v] = &acmItem{
+			key:      v,
+			group:    tmp[0],
+			dataId:   tmp[1],
+			multiple: multiple,
+		}
+	}
+	return m
 }
 
 func (c *Config) Load(v interface{}) error {
@@ -91,15 +103,19 @@ func (c *Config) Load(v interface{}) error {
 		if f == "-" || f == "" {
 			continue
 		}
-		tmp := strings.Split(f, ",")
+		tags := c.getTags(f)
+		for _, item := range tags {
+			result, err := c.Client.GetConfig(item.dataId, item.group)
+			if err != nil {
+				return err
+			}
 
-		if len(tmp) != 2 {
-			continue
-		}
+			err = c.unmarshal(result, val.Field(i).Addr().Interface(), item)
+			if err != nil {
+				return err
+			}
 
-		err := c.Unmarshal(tmp[0], tmp[1], val.Field(i).Addr().Interface())
-		if err != nil {
-			return err
+			c.cache.Store(item, val.Field(i).Addr().Interface())
 		}
 	}
 

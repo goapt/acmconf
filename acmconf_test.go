@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/verystar/goacm"
+	"fmt"
+	"reflect"
+	"errors"
 )
 
 func getConfig() *Config {
@@ -25,59 +28,97 @@ func getConfig() *Config {
 	return conf
 }
 
+type tmpConf struct {
+	Enable       bool   `json:"enable"`
+	Driver       string `json:"driver"`
+	Dsn          string `json:"dsn"`
+	MaxOpenConns int    `toml:"max_open_conns" json:"max_open_conns"`
+	MaxIdleConns int    `toml:"max_idle_conns" json:"max_idle_conns"`
+	ShowSql      bool   `toml:"show_sql" json:"show_sql"`
+}
+
 type App struct {
-	Test map[string]string `acmconf:"test,test"`
+	Cron map[string]string   `acmconf:"verypay:cron"`
+	DB   map[string]*tmpConf `acmconf:"verypay:database.pay,verypay:database.paydw,verypay:database.weixin"`
 }
 
-var beforJsonConf = `
-{
-  "name": "lili",
-  "mail": "test@test.com",
-  "hello": "world",
-}
-`
-
-var afterJsonConf = `
-{
-  "name": "didi",
-  "mail": "tmp@test.com",
-  "hello": "verystar",
-}
-`
-
-func TestConfig_Listen(t *testing.T) {
+func publish(dsn string, t *testing.T) {
 	conf := getConfig()
-	_, err := conf.Client.Publish("test", "test", beforJsonConf)
+
+	ret, err := conf.Client.Publish("database.pay", "verypay", `{
+    "enable": false,
+    "driver": "mysql",
+    "dsn": "`+ dsn+ `:test@tcp(127.0.0.1:3306)/test?charset=utf8&parseTime=True&loc=Asia%2FShanghai",
+    "max_open_conns": 100,
+    "max_idle_conns": 100,
+    "show_sql": true
+}`)
 
 	if err != nil {
 		t.Error(err)
 	}
 
+	fmt.Println("publish=>", ret)
+}
+
+func TestConfig_Listen(t *testing.T) {
+	conf := getConfig()
+	publish("test1",t)
 	//Sleep 3 secend, Ensure configuration effective
 	time.Sleep(3 * time.Second)
 
 	app := &App{}
-	err = conf.Load(app)
+	err := conf.Load(app)
+	fmt.Println(app.DB["verypay:database.pay"])
 
 	if err != nil {
 		t.Error(err)
 	}
 
-	conf.Listen("test", "test", &app.Test, func() {
-		if app.Test["name"] != "didi" {
-			t.Error("app not update")
-		}
+	conf.Listen(func(key string, v interface{}) {
+		fmt.Println("update", key)
 	})
 
-	time.Sleep(5 * time.Second)
-	_, err = conf.Client.Publish("test", "test", afterJsonConf)
+	time.Sleep(8 * time.Second)
+	publish("test2",t)
+
 
 	if err != nil {
 		t.Error(err)
 	}
 	time.Sleep(5 * time.Second)
 
-	if app.Test["name"] != "didi" {
+	fmt.Println(app.DB["verypay:database.pay"])
+	if app.DB["verypay:database.pay"].Dsn != "test2:test@tcp(127.0.0.1:3306)/test?charset=utf8&parseTime=True&loc=Asia%2FShanghai" {
 		t.Error("app not update")
 	}
 }
+
+func foo(v interface{}) error {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+		return errors.New("config:Load(non-pointer)")
+	}
+	val := rv.Elem()
+	t := reflect.TypeOf(v).Elem()
+
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i).Tag.Get("acmconf")
+		if f == "-" || f == "" {
+			continue
+		}
+
+		kind := val.Type().Field(i)
+
+		fmt.Println("2=>", kind)
+	}
+	return nil
+}
+
+//func TestConfig_Listen2(t *testing.T) {
+//	app := &App{}
+//	err := foo(app)
+//	if err != nil {
+//		t.Error(err)
+//	}
+//}
