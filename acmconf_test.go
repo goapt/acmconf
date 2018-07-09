@@ -8,8 +8,6 @@ import (
 
 	"github.com/verystar/goacm"
 	"fmt"
-	"reflect"
-	"errors"
 )
 
 func getConfig() *Config {
@@ -93,32 +91,3 @@ func TestConfig_Listen(t *testing.T) {
 		t.Error("app not update")
 	}
 }
-
-func foo(v interface{}) error {
-	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Ptr || rv.IsNil() {
-		return errors.New("config:Load(non-pointer)")
-	}
-	val := rv.Elem()
-	t := reflect.TypeOf(v).Elem()
-
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i).Tag.Get("acmconf")
-		if f == "-" || f == "" {
-			continue
-		}
-
-		kind := val.Type().Field(i)
-
-		fmt.Println("2=>", kind)
-	}
-	return nil
-}
-
-//func TestConfig_Listen2(t *testing.T) {
-//	app := &App{}
-//	err := foo(app)
-//	if err != nil {
-//		t.Error(err)
-//	}
-//}
