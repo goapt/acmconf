@@ -72,8 +72,9 @@ func (c *Config) getCacheKey(group, dataId string) string {
 
 func (c *Config) getTags(str string) map[string]*acmItem {
 	m := make(map[string]*acmItem, 0)
+	multiple := str[:1] == "["
+	str = strings.Trim(str,"[]")
 	tags := strings.Split(str, ",")
-	multiple := len(tags) > 1
 
 	for _, v := range tags {
 		tmp := strings.Split(v, ":")
