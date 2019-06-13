@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 	"github.com/ilibs/json5"
-	"github.com/verystar/goacm"
+	"github.com/goapt/goacm"
 	"time"
 	"fmt"
 )
