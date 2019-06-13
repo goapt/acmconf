@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 	"testing"
-	"github.com/verystar/goacm"
+	"github.com/goapt/goacm"
 	"fmt"
 )
 
